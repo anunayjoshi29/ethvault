@@ -15,7 +15,7 @@ contract DepositETH is ERC20, Ownable, ReentrancyGuard {
     event ETHWithdrawn(address indexed user, uint256 amount);
     
     // Constructor
-    constructor() ERC20("Deposit ETH Token", "dETH") Ownable(msg.sender) {}
+    constructor() ERC20("Deposit ETH Token", "dETH") {}
     
     /**
      * @dev Allows users to deposit ETH and receive dETH tokens at 1:1 ratio

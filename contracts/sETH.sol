@@ -37,8 +37,8 @@ contract StakedETH is ERC20, Ownable, ReentrancyGuard {
     event Unstaked(address indexed user, uint256 amount);
     event LeaderboardUpdated(uint256 timestamp);
     
-    // Constructor - Perbaikan: menggunakan address payable
-    constructor(address payable _dETHToken) ERC20("Staked ETH Token", "sETH") Ownable(msg.sender) {
+    // Constructor
+    constructor(address payable _dETHToken) ERC20("Staked ETH Token", "sETH") {
         dETHToken = DepositETH(_dETHToken);
     }
     

@@ -18,6 +18,9 @@ contract Governance is Ownable, ReentrancyGuard {
     uint256 public executionDelay = 2 days;
     uint256 public quorum = 100 ether; // Minimum votes required for a proposal to pass
     
+    // FIX: Add proposal cleanup limit to prevent unbounded growth
+    uint256 public constant MAX_PROPOSALS = 1000; // Maximum number of proposals to keep in storage
+    
     // Proposal struct
     struct Proposal {
         uint256 id;
@@ -64,13 +67,13 @@ contract Governance is Ownable, ReentrancyGuard {
     mapping(uint256 => Proposal) public proposals;
     
     // Events
-    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, string description);
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, string description, bytes32 callDataHash);
     event VoteCast(address indexed voter, uint256 indexed proposalId, bool support, uint256 weight);
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalCanceled(uint256 indexed proposalId);
     
-    // Constructor - Perbaikan: menggunakan address payable
-    constructor(address payable _sETHToken) Ownable(msg.sender) {
+    // Constructor
+    constructor(address _sETHToken) {
         sETHToken = StakedETH(_sETHToken);
     }
     
@@ -83,6 +86,13 @@ contract Governance is Ownable, ReentrancyGuard {
     function createProposal(string memory description, address target, bytes memory callData) external returns (uint256) {
         require(sETHToken.balanceOf(msg.sender) >= 1 ether, "Must have at least 1 sETH to create proposal");
         
+        //FIX: Add basic target validation
+        require(target != address(0), "Invalid target address");
+        require(target != address(this), "Cannot target this contract");
+        
+        //FIX: Add proposal limit check to prevent unbounded growth
+        require(proposalCount < MAX_PROPOSALS, "Maximum proposals limit reached");
+        
         uint256 proposalId = proposalCount++;
         
         Proposal storage proposal = proposals[proposalId];
@@ -93,7 +103,8 @@ contract Governance is Ownable, ReentrancyGuard {
         proposal.callData = callData;
         proposal.createdAt = block.timestamp;
         
-        emit ProposalCreated(proposalId, msg.sender, description);
+        //FIX: Include callData hash in event for better transparency
+        emit ProposalCreated(proposalId, msg.sender, description, keccak256(callData));
         
         return proposalId;
     }
@@ -115,6 +126,9 @@ contract Governance is Ownable, ReentrancyGuard {
         uint256 weight = sETHToken.balanceOf(msg.sender);
         require(weight > 0, "No voting power");
         
+        //FIX: Add minimum voting period check to prevent immediate execution abuse
+        require(block.timestamp >= proposal.createdAt + 1 hours, "Voting period too early");
+        
         // Record the vote
         if (support) {
             proposal.votesFor += weight;
@@ -135,6 +149,9 @@ contract Governance is Ownable, ReentrancyGuard {
         require(getProposalState(proposalId) == ProposalState.Succeeded, "Proposal not in succeeded state");
         
         Proposal storage proposal = proposals[proposalId];
+        
+        // CRITICAL FIX: Add expiry check to prevent execution after expiry
+        require(block.timestamp <= proposal.createdAt + votingPeriod + executionDelay, "Proposal has expired");
         
         // Mark as executed
         proposal.executed = true;
@@ -267,8 +284,36 @@ contract Governance is Ownable, ReentrancyGuard {
         uint256 _executionDelay,
         uint256 _quorum
     ) external onlyOwner {
+        //FIX: Add reasonable bounds for governance parameters
+        require(_votingPeriod >= 1 days && _votingPeriod <= 30 days, "Invalid voting period");
+        require(_executionDelay >= 1 days && _executionDelay <= 7 days, "Invalid execution delay");
+        require(_quorum >= 1 ether, "Quorum too low");
+        
         votingPeriod = _votingPeriod;
         executionDelay = _executionDelay;
         quorum = _quorum;
+    }
+    
+    /**
+     * @dev Admin function to clean up old proposals (only owner)
+     * This helps prevent unbounded storage growth
+     */
+    function cleanupOldProposals(uint256[] calldata proposalIds) external onlyOwner {
+        for (uint256 i = 0; i < proposalIds.length; i++) {
+            uint256 proposalId = proposalIds[i];
+            require(proposalId < proposalCount, "Invalid proposal ID");
+            
+            Proposal storage proposal = proposals[proposalId];
+            // Only allow cleanup of executed, canceled, or expired proposals
+            require(
+                proposal.executed || 
+                proposal.canceled || 
+                getProposalState(proposalId) == ProposalState.Expired,
+                "Can only cleanup finished proposals"
+            );
+            
+            // Clear the proposal data (this is a simplified cleanup)
+            delete proposals[proposalId];
+        }
     }
 }

@@ -1,7 +1,10 @@
 const app = require('./app');
 const connectDatabase = require('./config/database');
 const cloudinary = require('cloudinary');
-const { getCookie } = require('./controllers/productController');
+
+const anunayApiTestRoutes = require('./routes/anunayApiTest');
+app.use('/api', anunayApiTestRoutes);
+
 const PORT = process.env.PORT || 4000;
 
 // UncaughtException Error
@@ -10,8 +13,6 @@ process.on('uncaughtException', (err) => {
     process.exit(1);
 });
 
-// connectDatabase();
-
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -19,9 +20,8 @@ cloudinary.config({
 });
 
 const server = app.listen(PORT, () => {
-    console.log(`Server running`)
+    console.log(`Server running`);
 });
-
 
 // Unhandled Promise Rejection
 process.on('unhandledRejection', (err) => {
